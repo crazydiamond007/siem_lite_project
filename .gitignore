@@ -20,7 +20,7 @@ static/
 
 # Logs
 *.log
-logs/
+
 
 # IDE / editor
 .vscode/
