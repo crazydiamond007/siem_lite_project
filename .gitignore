@@ -41,3 +41,4 @@ htmlcov/
 
 # uv
 .uv/
+http_script.txt
