@@ -5,6 +5,10 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from machines.auth import (
+    MachineTokenError,
+    authenticate_machine_from_jwt,
+)
 from machines.models import Machine
 from .models import LogEntry
 from .serializers import LogEntryIngestionSerializer, LogEntrySerializer
@@ -14,31 +18,70 @@ from rules.engine import apply_rules_to_log_entry
 MACHINE_TOKEN_HEADER = "X-Machine-Token"
 
 
+def _get_machine_from_request(request) -> Machine | None:
+    """
+    Resolve a Machine from the incoming request using one of:
+      1) Authorization: Bearer <machine_jwt>  (preferred)
+      2) X-Machine-Token: <api_token>        (fallback)
+    """
+    auth_header = request.headers.get("Authorization", "")
+    token_prefix = "Bearer "
+
+    # 1) Try Authorization: Bearer <machine_jwt>
+    if auth_header.startswith(token_prefix):
+        jwt_token = auth_header[len(token_prefix) :].strip()
+        if jwt_token:
+            try:
+                machine = authenticate_machine_from_jwt(jwt_token)
+                return machine
+            except MachineTokenError:
+                # Fall through to header-based token as fallback
+                pass
+
+    # 2) Fallback to X-Machine-Token (long-lived api_token)
+    api_token = request.headers.get(MACHINE_TOKEN_HEADER)
+    if api_token:
+        try:
+            return Machine.objects.get(api_token=api_token, is_active=True)
+        except Machine.DoesNotExist:
+            return None
+
+    return None
+
+
 class LogIngestionAPIView(APIView):
     """
     Endpoint for agents to submit log entries.
 
-    Authentication:
-      - Uses a simple header-based machine token:
+    Authentication (machine-level):
+
+      Preferred:
+        Authorization: Bearer <machine_jwt>
+
+      Backward compatible:
         X-Machine-Token: <api_token>
+
+    Note:
+      We disable DRF's default authentication (SimpleJWT user tokens) here,
+      because we manage machine authentication manually.
     """
 
+    # VERY IMPORTANT: disable default JWTAuthentication for this endpoint
+    authentication_classes: list = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, *args, **kwargs) -> Response:
-        # 1) Authenticate machine via X-Machine-Token
-        token = request.headers.get(MACHINE_TOKEN_HEADER)
-        if not token:
+        # 1) Authenticate machine
+        machine = _get_machine_from_request(request)
+        if not machine:
             return Response(
-                {"detail": f"Missing {MACHINE_TOKEN_HEADER} header."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
-
-        try:
-            machine = Machine.objects.get(api_token=token, is_active=True)
-        except Machine.DoesNotExist:
-            return Response(
-                {"detail": "Invalid or inactive machine token."},
+                {
+                    "detail": (
+                        "Unable to authenticate machine. Provide either "
+                        "Authorization: Bearer <machine_jwt> or "
+                        f"{MACHINE_TOKEN_HEADER}: <api_token>."
+                    )
+                },
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
