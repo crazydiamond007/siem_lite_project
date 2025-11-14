@@ -1,4 +1,3 @@
-# Create your views here.
 from __future__ import annotations
 
 from django.utils import timezone
@@ -9,6 +8,7 @@ from rest_framework.views import APIView
 from machines.models import Machine
 from .models import LogEntry
 from .serializers import LogEntryIngestionSerializer, LogEntrySerializer
+from rules.engine import apply_rules_to_log_entry
 
 
 MACHINE_TOKEN_HEADER = "X-Machine-Token"
@@ -21,10 +21,6 @@ class LogIngestionAPIView(APIView):
     Authentication:
       - Uses a simple header-based machine token:
         X-Machine-Token: <api_token>
-
-    This is intentionally simple and explicit for now; we can later
-    evolve this into full JWT-based machine auth while keeping
-    the same external contract for agents.
     """
 
     permission_classes = [permissions.AllowAny]
@@ -58,7 +54,8 @@ class LogIngestionAPIView(APIView):
             machine=machine, validated_data=serializer.validated_data
         )
 
-        # TODO (Day 7–8): call rule engine with this log_entry
+        # 3) Apply detection rules (basic rule engine)
+        apply_rules_to_log_entry(log_entry)
 
         return Response(
             {"id": str(log_entry.id), "status": "ingested"},
@@ -69,8 +66,6 @@ class LogIngestionAPIView(APIView):
 class LogEntryViewSet(viewsets.ReadOnlyModelViewSet):
     """
     Read-only API for browsing log entries (for human admins / dashboards).
-
-    Uses standard DRF auth (JWT) and admin permissions.
     """
 
     queryset = LogEntry.objects.select_related("machine").order_by("-timestamp")
