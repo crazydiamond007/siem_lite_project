@@ -14,6 +14,7 @@ repos:
       - id: check-yaml
       - id: check-toml
       - id: check-added-large-files
+        args: [--maxkb=20000]
       - id: check-merge-conflict
 
   # Ruff: linter + formatter (fast, batteries-included)

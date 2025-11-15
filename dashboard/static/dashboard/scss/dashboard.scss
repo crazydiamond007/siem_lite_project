@@ -1,0 +1,546 @@
+// =========================
+// Design tokens
+// =========================
+
+@use "sass:color";
+
+
+$siem-bg: #050014; // deep violet
+$siem-bg-alt: #020617;
+$siem-bg-card: #0b1220;
+$siem-border: rgba(148, 163, 184, 0.25);
+$siem-border-subtle: rgba(31, 41, 55, 0.9);
+
+$siem-accent: #a855f7; // purple accent
+$siem-accent-soft: rgba(168, 85, 247, 0.12);
+$siem-accent-strong: rgba(168, 85, 247, 0.35);
+
+$siem-secondary: #22d3ee; // cyan secondary
+$siem-text: #f9fafb; // almost white
+$siem-muted: #9ca3af;
+$siem-danger: #fb7185;
+$siem-danger-soft: rgba(251, 113, 133, 0.12);
+
+$siem-radius-lg: 18px;
+$siem-radius-pill: 999px;
+$siem-shadow-soft: 0 18px 40px rgba(15, 23, 42, 0.85);
+
+// Design system extras
+$siem-font-family: system-ui, -apple-system, BlinkMacSystemFont, "Inter",
+"Segoe UI", sans-serif;
+$siem-font-size-base: 0.875rem; // 14px-ish
+$siem-line-height-base: 1.5;
+$siem-spacing-unit: 0.5rem; // 8px
+
+// =========================
+// Base & typography system
+// =========================
+.siem-body {
+  background: radial-gradient(circle at top left, #4c1d95 0, $siem-bg 45%),
+  radial-gradient(circle at bottom right, #0f172a 0, $siem-bg-alt 55%);
+  color: $siem-text;
+  min-height: 100vh;
+  font-family: $siem-font-family;
+  font-size: $siem-font-size-base;
+  line-height: $siem-line-height-base;
+}
+
+.siem-container {
+  padding-bottom: 2.5rem;
+}
+
+// Global typographic rhythm
+.siem-title {
+  font-size: 1.6rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.siem-subtitle {
+  font-size: 0.8rem;
+  color: $siem-muted;
+}
+
+.siem-section-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: $siem-text;
+}
+
+.siem-section-subtitle {
+  display: block;
+  font-size: 0.75rem;
+  color: $siem-muted;
+  margin-top: 0.1rem;
+}
+
+.siem-inline-strong {
+  font-weight: 500;
+  color: $siem-accent;
+}
+
+small,
+.small {
+  font-size: 0.75rem;
+}
+
+// =========================
+// Header layout
+// =========================
+.siem-header {
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.9);
+}
+
+.siem-header-left {
+  min-width: 0;
+}
+
+.siem-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.siem-header-right {
+  min-width: 0;
+}
+
+// Logo
+.siem-logo-pill {
+  width: 44px;
+  height: 44px;
+  border-radius: $siem-radius-pill;
+  border: 1px solid $siem-accent-strong;
+  background: radial-gradient(circle at 30% 20%, #4c1d95 0, #020617 60%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.9);
+}
+
+.siem-logo-dot {
+  width: 13px;
+  height: 13px;
+  border-radius: $siem-radius-pill;
+  background: $siem-secondary;
+  box-shadow: 0 0 0 10px rgba(34, 211, 238, 0.2);
+}
+
+// Header status pill
+.siem-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  border-radius: $siem-radius-pill;
+  border: 1px solid $siem-border;
+  background: rgba(15, 23, 42, 0.96);
+  font-size: 0.8rem;
+  color: $siem-muted;
+  backdrop-filter: blur(10px);
+}
+
+.siem-status-pill-main {
+  border-color: $siem-accent-strong;
+  background: linear-gradient(
+                  135deg,
+                  rgba(24, 24, 37, 0.96),
+                  rgba(15, 23, 42, 0.98)
+  );
+}
+
+.siem-status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: $siem-radius-pill;
+  background: #22c55e;
+  box-shadow: 0 0 0 7px rgba(34, 197, 94, 0.26);
+}
+
+.siem-status-text {
+  font-weight: 500;
+  color: $siem-text;
+}
+
+.siem-status-meta {
+  color: $siem-muted;
+}
+
+// =========================
+// Buttons
+// =========================
+.siem-btn {
+  // override Bootstrap .btn defaults visually
+  border-radius: $siem-radius-pill;
+  padding: 0.35rem 0.95rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.2;
+  border-width: 1px;
+  border-style: solid;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  background-color: transparent;
+  color: $siem-text;
+  text-decoration: none;
+  box-shadow: none;
+  transition: background-color 0.15s ease,
+  border-color 0.15s ease,
+  color 0.15s ease,
+  box-shadow 0.15s ease,
+  transform 0.05s ease;
+}
+
+.siem-btn-primary {
+  background: linear-gradient(135deg, $siem-accent, #c084fc);
+  border-color: $siem-accent-strong;
+  color: #050014;
+
+  &:hover {
+    background: linear-gradient(135deg, #c084fc, #e879f9);
+    border-color: #e879f9;
+    transform: translateY(-0.5px);
+    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.9);
+  }
+}
+
+.siem-btn-ghost {
+  border-color: $siem-border;
+  color: $siem-text;
+  background-color: rgba(15, 23, 42, 0.8);
+
+  &:hover {
+    border-color: $siem-accent-strong;
+    background-color: rgba(30, 64, 175, 0.5);
+    transform: translateY(-0.5px);
+  }
+}
+
+.siem-btn:focus-visible {
+  outline: 2px solid $siem-secondary;
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+// =========================
+// Main layout sections
+// =========================
+.siem-main {
+  margin-top: 0.75rem;
+}
+
+.siem-kpi-section {
+  margin-bottom: 1.5rem;
+}
+
+.siem-data-section {
+  margin-bottom: 0.5rem;
+}
+
+// =========================
+// Cards
+// =========================
+.siem-card {
+  background: linear-gradient(
+                  145deg,
+                  rgba(15, 23, 42, 0.98),
+                  rgba(17, 24, 39, 0.97)
+  );
+  border-radius: $siem-radius-lg;
+  border: 1px solid $siem-border;
+  padding: 16px 18px;
+  box-shadow: $siem-shadow-soft;
+  backdrop-filter: blur(8px);
+  transition: border-color 0.16s ease,
+  box-shadow 0.16s ease,
+  transform 0.06s ease,
+  background-color 0.16s ease;
+}
+
+.siem-card-kpi {
+  min-height: 108px;
+}
+
+.siem-card-table {
+  padding-top: 14px;
+}
+
+.siem-card:hover {
+  border-color: $siem-accent-strong;
+  box-shadow: 0 16px 44px rgba(15, 23, 42, 0.9);
+  transform: translateY(-1px);
+}
+
+.siem-card-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: $siem-muted;
+}
+
+.siem-card-value {
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: $siem-text;
+}
+
+.siem-card-sub {
+  font-size: 0.8rem;
+  color: $siem-muted;
+  margin-top: 4px;
+}
+
+// =========================
+// Badges
+// =========================
+.siem-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 10px;
+  border-radius: $siem-radius-pill;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: none;
+  border-width: 1px;
+  border-style: solid;
+}
+
+.siem-badge-soft {
+  @extend .siem-badge;
+  background: $siem-accent-soft;
+  color: $siem-accent;
+  border-color: $siem-accent-strong;
+}
+
+.siem-badge-danger-soft {
+  @extend .siem-badge;
+  background: $siem-danger-soft;
+  color: $siem-danger;
+  border-color: rgba(251, 113, 133, 0.6);
+}
+
+.siem-badge-outline {
+  @extend .siem-badge;
+  background-color: transparent;
+  color: $siem-muted;
+  border-color: $siem-border;
+
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+// =========================
+// Tables & rows (dark theme)
+// =========================
+.siem-card-table .table-responsive {
+  margin-top: 0.4rem;
+}
+
+// Override Bootstrap table variables for dark theme
+.table.siem-table {
+  --bs-table-bg: transparent;
+  --bs-table-color: #f9fafb;
+  --bs-table-striped-bg: rgba(15, 23, 42, 0.9);
+  --bs-table-striped-color: #f9fafb;
+  --bs-table-hover-bg: rgba(31, 41, 55, 0.9);
+  --bs-table-hover-color: #f9fafb;
+  --bs-table-border-color: #1f2937;
+
+  color: $siem-text;
+  background-color: transparent;
+}
+
+.siem-table thead {
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  color: $siem-muted;
+
+  th {
+    border-bottom: 1px solid $siem-border-subtle;
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+    white-space: nowrap;
+  }
+}
+
+.siem-table tbody tr {
+  border-bottom: 1px solid $siem-border-subtle;
+  transition: background-color 0.15s ease,
+  transform 0.05s ease;
+}
+
+.siem-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.siem-table td,
+.siem-table th {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.siem-table tbody td {
+  vertical-align: top;
+}
+
+.siem-table tbody tr:hover {
+  background-color: rgba(31, 41, 55, 0.9);
+}
+
+.siem-row-title {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: $siem-text;
+}
+
+.siem-row-subtext {
+  font-size: 0.78rem;
+  color: $siem-muted;
+}
+
+// =========================
+// Machine chips
+// =========================
+.siem-chip-machine {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: $siem-radius-pill;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  font-size: 0.76rem;
+  color: $siem-text;
+  background: radial-gradient(circle at top left, #111827 0, #020617 65%);
+}
+
+.siem-chip-machine-indicator,
+.siem-chip-machine-indicator-low {
+  width: 8px;
+  height: 8px;
+  border-radius: $siem-radius-pill;
+}
+
+.siem-chip-machine-indicator {
+  background: $siem-secondary;
+}
+
+.siem-chip-machine-indicator-low {
+  background: #22c55e;
+}
+
+.siem-chip-machine-muted {
+  border-color: rgba(148, 163, 184, 0.3);
+  color: $siem-muted;
+}
+
+// =========================
+// Severity & status pills
+// =========================
+.siem-severity {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 11px;
+  border-radius: $siem-radius-pill;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+}
+
+.siem-severity-high {
+  background: rgba(168, 85, 247, 0.14);
+  border-color: rgba(168, 85, 247, 0.9);
+  color: $siem-accent;
+}
+
+.siem-severity-medium {
+  background: rgba(250, 204, 21, 0.16);
+  border-color: rgba(250, 204, 21, 0.8);
+  color: #facc15;
+}
+
+.siem-severity-low {
+  background: rgba(22, 163, 74, 0.16);
+  border-color: rgba(22, 163, 74, 0.8);
+  color: #4ade80;
+}
+
+.siem-status-pill-table {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 11px;
+  border-radius: $siem-radius-pill;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+}
+
+.siem-status-open {
+  background: rgba(251, 113, 133, 0.16);
+  border-color: rgba(251, 113, 133, 0.85);
+  color: $siem-danger;
+}
+
+.siem-status-closed {
+  background: rgba(31, 41, 55, 0.9);
+  border-color: rgba(148, 163, 184, 0.7);
+  color: $siem-muted;
+}
+
+// =========================
+// Empty state
+// =========================
+.siem-empty-state {
+  padding: 0.75rem 0;
+  color: $siem-muted;
+  font-style: italic;
+}
+
+// =========================
+// Links & footer
+// =========================
+.siem-link {
+  color: $siem-secondary;
+  text-decoration: none;
+  font-size: 0.82rem;
+
+  &:hover {
+    text-decoration: underline;
+    color: color.adjust($siem-secondary, $lightness: 4%);
+  }
+
+}
+
+.siem-link:focus-visible {
+  outline: 2px solid $siem-secondary;
+  outline-offset: 2px;
+}
+
+.siem-footer {
+  border-top: 1px solid rgba(15, 23, 42, 0.9);
+  margin-top: 1.5rem;
+  padding-top: 0.75rem;
+}
+
+.siem-footer-text {
+  color: $siem-muted;
+}
+
+.siem-footer-links {
+  color: $siem-muted;
+
+  a {
+    margin-left: 2px;
+    margin-right: 2px;
+  }
+}

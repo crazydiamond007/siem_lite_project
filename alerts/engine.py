@@ -1,79 +1,262 @@
-from __future__ import annotations
+# alerts/engine.py
+import logging
+from typing import Any, Dict, Optional
 
+import requests
+from django.conf import settings
+from django.core.mail import send_mail
+from django.db import transaction
+from django.db.models import F
+from django.utils import timezone
 
-from .models import Alert, AlertStatus
-from core.models import SeverityLevel
-from logs.models import LogEntry
+from .models import Alert
 from rules.models import Rule
+from machines.models import Machine
+
+logger = logging.getLogger(__name__)
 
 
-def _build_dedup_key(rule: Rule, log_entry: LogEntry) -> str:
+def _get_escalation_threshold() -> int:
     """
-    Build a deterministic deduplication key used to group alerts.
+    Global threshold for auto-escalation when occurrences keep increasing.
+    Can be overridden via settings.ALERT_ESCALATION_THRESHOLD.
     """
-    parts = [
-        str(log_entry.machine_id),
-        str(rule.id),
-        log_entry.source_ip or "",
+    return getattr(settings, "ALERT_ESCALATION_THRESHOLD", 10)
+
+
+def _should_escalate(alert: Alert) -> bool:
+    """
+    Decide if an alert should be escalated.
+
+    Current policy:
+    - Critical severity => escalate immediately.
+    - High severity with occurrences >= threshold => escalate.
+    - Any severity with occurrences >= 2 * threshold => escalate as noisy.
+    """
+    if alert.is_escalated:
+        return False
+
+    threshold = _get_escalation_threshold()
+
+    if alert.severity == Alert.SEVERITY_CRITICAL:
+        return True
+
+    if alert.severity == Alert.SEVERITY_HIGH and alert.occurrences >= threshold:
+        return True
+
+    if alert.occurrences >= 2 * threshold:
+        return True
+
+    return False
+
+
+def _format_alert_message(alert: Alert) -> str:
+    """
+    Human-readable notification message used for email/Telegram.
+    """
+    machine_name = str(alert.machine)
+    rule_name = str(alert.rule)
+
+    lines = [
+        f"SIEM-Lite Alert: {alert.title}",
+        "",
+        f"Rule: {rule_name}",
+        f"Machine: {machine_name}",
+        f"Severity: {alert.severity.upper()}",
+        f"Status: {alert.status}",
+        f"Occurrences: {alert.occurrences}",
+        f"First seen: {alert.first_seen.isoformat()}",
+        f"Last seen: {alert.last_seen.isoformat()}",
     ]
-    return "|".join(parts)
+
+    if alert.description:
+        lines.append("")
+        lines.append("Description:")
+        lines.append(alert.description)
+
+    if alert.metadata:
+        lines.append("")
+        lines.append("Metadata:")
+        for key, value in alert.metadata.items():
+            lines.append(f"- {key}: {value}")
+
+    return "\n".join(lines)
 
 
+def _notify_via_email(alert: Alert) -> None:
+    """
+    Send alert via email if settings are configured.
+
+    Required settings:
+    - ALERT_EMAIL_RECIPIENTS: list of recipient emails
+    - DEFAULT_FROM_EMAIL or SERVER_EMAIL
+    """
+    recipients = getattr(settings, "ALERT_EMAIL_RECIPIENTS", None)
+    if not recipients:
+        logger.debug(
+            "Skipping email alert notification: ALERT_EMAIL_RECIPIENTS not set"
+        )
+        return
+
+    subject = f"[SIEM-Lite] {alert.severity.upper()} alert on {alert.machine}"
+    message = _format_alert_message(alert)
+    from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None) or getattr(
+        settings, "SERVER_EMAIL", None
+    )
+
+    if not from_email:
+        logger.warning(
+            "Cannot send email alert: DEFAULT_FROM_EMAIL / SERVER_EMAIL not configured"
+        )
+        return
+
+    try:
+        send_mail(subject, message, from_email, recipients, fail_silently=False)
+        logger.info("Sent email alert notification for alert %s", alert.id)
+    except Exception as exc:
+        logger.exception("Failed to send email alert notification: %s", exc)
+
+
+def _notify_via_telegram(alert: Alert) -> None:
+    """
+    Send alert via Telegram if settings are configured.
+
+    Required settings:
+    - TELEGRAM_BOT_TOKEN
+    - TELEGRAM_CHAT_ID
+    """
+    bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", None)
+    chat_id = getattr(settings, "TELEGRAM_CHAT_ID", None)
+
+    if not bot_token or not chat_id:
+        logger.debug(
+            "Skipping Telegram alert notification: TELEGRAM_BOT_TOKEN/CHAT_ID not set"
+        )
+        return
+
+    text = _format_alert_message(alert)
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+
+    try:
+        resp = requests.post(
+            url,
+            json={"chat_id": chat_id, "text": text},
+            timeout=5,
+        )
+        if resp.status_code != 200:
+            logger.warning(
+                "Telegram notification failed (%s): %s",
+                resp.status_code,
+                resp.text,
+            )
+        else:
+            logger.info("Sent Telegram alert notification for alert %s", alert.id)
+    except Exception as exc:
+        logger.exception("Failed to send Telegram alert notification: %s", exc)
+
+
+def _send_notifications(alert: Alert) -> None:
+    """
+    Send notifications (email, Telegram, etc.) for a given alert.
+    Called when an alert is created or escalated.
+    """
+    _notify_via_email(alert)
+    _notify_via_telegram(alert)
+
+
+@transaction.atomic
 def create_or_update_alert(
-    *, rule: Rule, log_entry: LogEntry, occurrences: int = 1
+    *,
+    rule: Rule,
+    machine: Machine,
+    severity: Optional[str] = None,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> Alert:
     """
-    Create a new alert or update an existing one if a matching
-    deduplication key is found.
+    Main entry point used by the rule engine whenever a rule fires.
 
-    For now, we consider alerts with same (machine, rule, source_ip)
-    as duplicates until resolved.
+    Behaviour:
+    - Find an existing OPEN alert for the same (rule, machine).
+    - If found: increment occurrences, update last_seen, merge metadata.
+    - Else: create a new alert row.
+    - If escalation conditions are met, mark as escalated and send notifications.
+    - On creation (first time), also send notifications.
+
+    Returns the Alert instance (fresh from DB).
     """
-    dedup_key = _build_dedup_key(rule, log_entry)
+    metadata = metadata or {}
 
-    alert, created = Alert.objects.get_or_create(
-        deduplication_key=dedup_key,
-        defaults={
-            "machine": log_entry.machine,
-            "rule": rule,
-            "title": f"{rule.name} on {log_entry.machine.name}",
-            "message": _build_alert_message(rule, log_entry, occurrences),
-            "severity": rule.severity or SeverityLevel.MEDIUM,
-            "status": AlertStatus.OPEN,
-            "source_ip": log_entry.source_ip,
-            "first_seen": log_entry.timestamp,
-            "last_seen": log_entry.timestamp,
-            "occurrence_count": occurrences,
-            "metadata": {
-                "event_type": log_entry.event_type,
-                "recent_log_id": str(log_entry.id),
-            },
-        },
+    # Try to find an existing open alert for this rule+machine
+    existing = (
+        Alert.objects.select_for_update()
+        .filter(rule=rule, machine=machine, status=Alert.STATUS_OPEN)
+        .order_by("-last_seen")
+        .first()
     )
 
-    if not created:
-        alert.last_seen = log_entry.timestamp
-        alert.occurrence_count = max(alert.occurrence_count, occurrences)
-        alert.message = _build_alert_message(rule, log_entry, alert.occurrence_count)
-        alert.status = AlertStatus.OPEN  # re-open if it was suppressed/ack
-        alert.save(
-            update_fields=[
-                "last_seen",
-                "occurrence_count",
-                "message",
-                "status",
-                "updated_at",
-            ]
-        )
+    effective_severity = severity or getattr(rule, "severity", Alert.SEVERITY_LOW)
+
+    if existing:
+        # Update existing alert (deduplication)
+        existing.occurrences = F("occurrences") + 1
+        existing.last_seen = timezone.now()
+
+        # Merge metadata (existing values win, only add new keys)
+        if existing.metadata is None:
+            existing.metadata = metadata
+        else:
+            merged = dict(existing.metadata)
+            for k, v in metadata.items():
+                # If key already exists, we do not overwrite; we keep first value
+                merged.setdefault(k, v)
+            existing.metadata = merged
+
+        # Optionally, severity might be bumped up (never down)
+        severity_order = [
+            Alert.SEVERITY_LOW,
+            Alert.SEVERITY_MEDIUM,
+            Alert.SEVERITY_HIGH,
+            Alert.SEVERITY_CRITICAL,
+        ]
+        current_index = severity_order.index(existing.severity)
+        new_index = severity_order.index(effective_severity)
+        if new_index > current_index:
+            existing.severity = effective_severity
+
+        existing.save()
+
+        # We need a fresh instance with the concrete occurrences value,
+        # because we used F() for atomic increment.
+        existing.refresh_from_db()
+
+        if _should_escalate(existing):
+            existing.is_escalated = True
+            existing.save(update_fields=["is_escalated", "updated_at"])
+            _send_notifications(existing)
+
+        return existing
+
+    # No open alert => create a brand new one
+    title = title or f"Rule '{rule.name}' triggered on {machine.hostname}"
+    description = description or (getattr(rule, "description", "") or "")
+
+    alert = Alert.objects.create(
+        rule=rule,
+        machine=machine,
+        title=title,
+        description=description,
+        severity=effective_severity,
+        status=Alert.STATUS_OPEN,
+        occurrences=1,
+        first_seen=timezone.now(),
+        last_seen=timezone.now(),
+        is_escalated=False,
+        metadata=metadata,
+    )
+
+    # First time we see this alert => notify immediately
+    _send_notifications(alert)
 
     return alert
-
-
-def _build_alert_message(rule: Rule, log_entry: LogEntry, occurrences: int) -> str:
-    base = f"Rule '{rule.name}' triggered on machine '{log_entry.machine.name}'."
-    details = (
-        f" Event type: {log_entry.event_type}. Occurrences in window: {occurrences}."
-    )
-    if log_entry.source_ip:
-        details += f" Source IP: {log_entry.source_ip}."
-    return base + details

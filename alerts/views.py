@@ -1,60 +1,68 @@
-# Create your views here.
-from __future__ import annotations
-
-from rest_framework import permissions, status, viewsets
+# alerts/views.py
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from .models import Alert, AlertStatus
-from .serializers import AlertSerializer, AlertStatusUpdateSerializer
+from .models import Alert
+from .serializers import AlertSerializer
 
 
-class AlertViewSet(viewsets.ModelViewSet):
+class AlertViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    viewsets.GenericViewSet,
+):
     """
-    API for listing and managing alerts.
+    API for viewing and managing alerts.
 
-    - Authenticated users: can list / retrieve
-    - Admin users: can update status or delete
+    - GET /api/alerts/alerts/           -> list alerts (with filtering via query params)
+    - GET /api/alerts/alerts/{id}/      -> retrieve one alert
+    - PATCH /api/alerts/alerts/{id}/    -> update fields like status
+
+    Custom actions:
+    - POST /api/alerts/alerts/{id}/ack/    -> mark alert as acknowledged
+    - POST /api/alerts/alerts/{id}/close/  -> mark alert as closed
     """
 
-    queryset = Alert.objects.select_related("machine", "rule").order_by("-first_seen")
     serializer_class = AlertSerializer
-    permission_classes = [permissions.IsAuthenticated]
 
-    def get_serializer_class(self):
-        if self.action in {"update", "partial_update"}:
-            return AlertStatusUpdateSerializer
-        return super().get_serializer_class()
+    def get_queryset(self):
+        qs = Alert.objects.select_related("rule", "machine").all()
 
-    def update(self, request, *args, **kwargs):
-        """
-        Only allow updating status via PUT/PATCH.
-        """
-        partial = kwargs.pop("partial", False)
-        instance = self.get_object()
-        serializer = AlertStatusUpdateSerializer(
-            instance, data=request.data, partial=partial
-        )
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(AlertSerializer(instance).data)
+        # Simple filters via query parameters
+        severity = self.request.query_params.get("severity")
+        status_param = self.request.query_params.get("status")
+        machine_id = self.request.query_params.get("machine")
+        rule_id = self.request.query_params.get("rule")
 
-    @action(detail=True, methods=["post"])
-    def resolve(self, request, pk=None):
-        """
-        Convenience action to mark an alert as resolved.
-        """
-        alert = self.get_object()
-        alert.status = AlertStatus.RESOLVED
-        alert.save(update_fields=["status", "updated_at"])
-        return Response(AlertSerializer(alert).data, status=status.HTTP_200_OK)
+        if severity:
+            qs = qs.filter(severity=severity)
+        if status_param:
+            qs = qs.filter(status=status_param)
+        if machine_id:
+            qs = qs.filter(machine_id=machine_id)
+        if rule_id:
+            qs = qs.filter(rule_id=rule_id)
+
+        return qs
 
     @action(detail=True, methods=["post"])
-    def acknowledge(self, request, pk=None):
+    def ack(self, request, pk=None):
         """
-        Convenience action to mark an alert as acknowledged.
+        Mark an alert as acknowledged.
         """
         alert = self.get_object()
-        alert.status = AlertStatus.ACKNOWLEDGED
-        alert.save(update_fields=["status", "updated_at"])
-        return Response(AlertSerializer(alert).data, status=status.HTTP_200_OK)
+        alert.mark_acknowledged()
+        serializer = self.get_serializer(alert)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"])
+    def close(self, request, pk=None):
+        """
+        Mark an alert as closed.
+        """
+        alert = self.get_object()
+        alert.mark_closed()
+        serializer = self.get_serializer(alert)
+        return Response(serializer.data, status=status.HTTP_200_OK)

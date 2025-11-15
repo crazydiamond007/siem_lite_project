@@ -1,0 +1,322 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <title>SIEM-Lite · Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+
+    <!-- Bootstrap 5 CSS -->
+    <link
+            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+            rel="stylesheet"
+            crossorigin="anonymous"
+    />
+
+    <!-- Compiled SCSS -->
+    <link
+            rel="stylesheet"
+            href="{% static 'dashboard/css/dashboard.css' %}"
+    />
+</head>
+<body class="siem-body">
+<div class="container-xxl py-4 siem-container">
+    <!-- HEADER -->
+    <header
+            class="siem-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4"
+    >
+        <div class="siem-header-left">
+            <div class="d-flex align-items-center gap-3 mb-1">
+                <div class="siem-logo-pill">
+                    <span class="siem-logo-dot"></span>
+                </div>
+                <div class="siem-header-text">
+                    <h1 class="h3 mb-0 siem-title">SIEM-Lite</h1>
+                    <p class="siem-subtitle small mb-0">
+                        Security events and alerts from your monitored machines.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="siem-header-right d-flex flex-column align-items-md-end gap-2">
+            <div class="siem-status-pill siem-status-pill-main">
+                <span class="siem-status-dot"></span>
+                <span class="siem-status-text">Backend online</span>
+                <span class="siem-status-meta small">
+              Updated: {{ now }}
+            </span>
+            </div>
+            <div class="d-flex gap-2">
+                <a href="/admin/" class="btn btn-sm siem-btn siem-btn-ghost">
+                    Django admin
+                </a>
+                <a href="/api/alerts/" class="btn btn-sm siem-btn siem-btn-primary">
+                    Alerts API
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <main class="siem-main">
+        <!-- KPI CARDS -->
+        <section class="row g-3 mb-4 siem-kpi-section">
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="siem-card siem-card-kpi h-100">
+                    <div class="d-flex justify-content-between align-items-start mb-1">
+                        <div>
+                            <div class="siem-card-label">Monitored machines</div>
+                            <div class="siem-card-value">{{ machines_count }}</div>
+                        </div>
+                        <span class="siem-badge siem-badge-soft">Agents</span>
+                    </div>
+                    <div class="siem-card-sub">
+                        Machines that have registered and are sending logs.
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="siem-card siem-card-kpi h-100">
+                    <div class="d-flex justify-content-between align-items-start mb-1">
+                        <div>
+                            <div class="siem-card-label">Open alerts</div>
+                            <div class="siem-card-value">{{ alerts_open_count }}</div>
+                        </div>
+                        <span class="siem-badge siem-badge-danger-soft">
+                  Action required
+                </span>
+                    </div>
+                    <div class="siem-card-sub">
+                        Total alerts currently in <span class="siem-inline-strong">open</span> status.
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="siem-card siem-card-kpi h-100">
+                    <div class="d-flex justify-content-between align-items-start mb-1">
+                        <div>
+                            <div class="siem-card-label">High severity</div>
+                            <div class="siem-card-value">
+                                {{ alerts_high_open_count }}
+                            </div>
+                        </div>
+                        <span class="siem-badge siem-badge-danger-soft">
+                  High risk
+                </span>
+                    </div>
+                    <div class="siem-card-sub">
+                        High severity alerts that should be triaged first.
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="siem-card siem-card-kpi h-100">
+                    <div class="d-flex justify-content-between align-items-start mb-1">
+                        <div>
+                            <div class="siem-card-label">Alerts last 24h</div>
+                            <div class="siem-card-value">{{ alerts_last_24h }}</div>
+                        </div>
+                        <span class="siem-badge siem-badge-soft">
+                  Rolling 24h
+                </span>
+                    </div>
+                    <div class="siem-card-sub">
+                        Alerts with activity since {{ last_24h }}.
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ALERTS + LOGS -->
+        <section class="row g-3 siem-data-section">
+            <!-- ALERTS -->
+            <div class="col-12 col-lg-7">
+                <div class="siem-card siem-card-table h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div>
+                            <h2 class="h6 mb-0 siem-section-title">Recent alerts</h2>
+                            <small class="siem-section-subtitle">
+                                Last {{ recent_alerts|length }} alerts
+                            </small>
+                        </div>
+                        <span
+                                class="siem-badge siem-badge-outline text-uppercase small"
+                        >
+                  Rule engine
+                </span>
+                    </div>
+
+                    {% if recent_alerts %}
+                        <div class="table-responsive mt-2">
+                            <table
+                                    class="table table-sm table-borderless align-middle siem-table"
+                            >
+                                <thead>
+                                <tr>
+                                    <th>Title</th>
+                                    <th>Machine</th>
+                                    <th>Severity</th>
+                                    <th>Status</th>
+                                    <th class="text-end">Last seen</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for alert in recent_alerts %}
+                                    <tr>
+                                        <td>
+                                            <div class="siem-row-title">
+                                                {{ alert.title }}
+                                            </div>
+                                            <div class="siem-row-subtext">
+                                                {{ alert.message|truncatechars:90 }}
+                                            </div>
+                                        </td>
+                                        <td>
+                        <span class="siem-chip-machine">
+                          <span class="siem-chip-machine-indicator"></span>
+                          <span>{{ alert.machine_name }}</span>
+                        </span>
+                                        </td>
+                                        <td>
+                                            {% if alert.severity == "high" %}
+                                                <span
+                                                        class="siem-severity siem-severity-high"
+                                                        data-severity="high"
+                                                >
+                          High
+                        </span>
+                                            {% elif alert.severity == "medium" %}
+                                                <span
+                                                        class="siem-severity siem-severity-medium"
+                                                        data-severity="medium"
+                                                >
+                          Medium
+                        </span>
+                                            {% else %}
+                                                <span
+                                                        class="siem-severity siem-severity-low"
+                                                        data-severity="{{ alert.severity }}"
+                                                >
+                          {{ alert.severity|title }}
+                        </span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                        <span
+                                class="siem-status-pill-table {% if alert.status == 'open' %}siem-status-open{% else %}siem-status-closed{% endif %}"
+                        >
+                          {{ alert.status|upper }}
+                        </span>
+                                        </td>
+                                        <td class="text-end">
+                        <span class="siem-row-subtext">
+                          {{ alert.last_seen|date:"Y-m-d H:i:s" }}
+                        </span>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="siem-empty-state small mb-0">
+                            No alerts yet. Generate some using the agent.
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- LOGS -->
+            <div class="col-12 col-lg-5">
+                <div class="siem-card siem-card-table h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div>
+                            <h2 class="h6 mb-0 siem-section-title">Recent log entries</h2>
+                            <small class="siem-section-subtitle">
+                                Last {{ recent_logs|length }} events
+                            </small>
+                        </div>
+                        <span
+                                class="siem-badge siem-badge-outline text-uppercase small"
+                        >
+                  Ingest pipeline
+                </span>
+                    </div>
+
+                    {% if recent_logs %}
+                        <div class="table-responsive mt-2">
+                            <table
+                                    class="table table-sm table-borderless align-middle siem-table"
+                            >
+                                <thead>
+                                <tr>
+                                    <th>Event</th>
+                                    <th>Machine</th>
+                                    <th>Source IP</th>
+                                    <th class="text-end">Timestamp</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for log in recent_logs %}
+                                    <tr>
+                                        <td>
+                                            <div class="siem-row-title">
+                                                {{ log.event_type }}
+                                            </div>
+                                            <div class="siem-row-subtext">
+                                                {{ log.raw_message|default:"(no message)"|truncatechars:80 }}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            {% if log.machine %}
+                                                <span class="siem-chip-machine siem-chip-machine-muted">
+                          <span class="siem-chip-machine-indicator-low"></span>
+                          <span>{{ log.machine.name }}</span>
+                        </span>
+                                            {% else %}
+                                                <span class="siem-row-subtext">–</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                        <span class="siem-row-subtext">
+                          {{ log.source_ip|default:"–" }}
+                        </span>
+                                        </td>
+                                        <td class="text-end">
+                        <span class="siem-row-subtext">
+                          {{ log.timestamp|date:"Y-m-d H:i:s" }}
+                        </span>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="siem-empty-state small mb-0">
+                            No log entries yet. Use the agent to send data.
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer
+            class="siem-footer d-flex flex-column flex-md-row justify-content-between gap-2 mt-4 small"
+    >
+        <span class="siem-footer-text">
+          SIEM-Lite · Local monitoring prototype
+        </span>
+        <span class="siem-footer-links">
+          API:
+          <a href="/api/alerts/" class="siem-link">/api/alerts/</a> ·
+          <a href="/api/machines/" class="siem-link">/api/machines/</a>
+        </span>
+    </footer>
+</div>
+</body>
+</html>

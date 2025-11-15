@@ -1,69 +1,42 @@
-from __future__ import annotations
-
+# alerts/serializers.py
 from rest_framework import serializers
 
-from .models import Alert, AlertStatus
+from .models import Alert
 
 
 class AlertSerializer(serializers.ModelSerializer):
-    """
-    Read-only representation of an Alert for dashboards and APIs.
-    """
-
-    machine_name = serializers.CharField(source="machine.name", read_only=True)
     rule_name = serializers.CharField(source="rule.name", read_only=True)
+    machine_name = serializers.CharField(source="machine.hostname", read_only=True)
 
     class Meta:
         model = Alert
         fields = [
             "id",
-            "machine",
-            "machine_name",
             "rule",
             "rule_name",
+            "machine",
+            "machine_name",
             "title",
-            "message",
+            "description",
             "severity",
             "status",
-            "source_ip",
+            "occurrences",
             "first_seen",
             "last_seen",
-            "occurrence_count",
-            "deduplication_key",
+            "is_escalated",
             "metadata",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
-            "id",
-            "machine",
-            "machine_name",
             "rule",
+            "machine",
             "rule_name",
-            "title",
-            "message",
-            "severity",
-            "source_ip",
+            "machine_name",
             "first_seen",
             "last_seen",
-            "occurrence_count",
-            "deduplication_key",
-            "metadata",
+            "occurrences",
+            "is_escalated",
             "created_at",
             "updated_at",
         ]
-
-
-class AlertStatusUpdateSerializer(serializers.ModelSerializer):
-    """
-    Minimal serializer used to update the status of an alert (e.g. resolve/ack).
-    """
-
-    class Meta:
-        model = Alert
-        fields = ["status"]
-
-    def validate_status(self, value):
-        if value not in AlertStatus.values:
-            raise serializers.ValidationError("Invalid status value.")
-        return value
