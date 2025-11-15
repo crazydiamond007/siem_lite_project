@@ -1,4 +1,3 @@
-# alerts/views.py
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -16,7 +15,7 @@ class AlertViewSet(
     """
     API for viewing and managing alerts.
 
-    - GET /api/alerts/alerts/           -> list alerts (with filtering via query params)
+    - GET /api/alerts/alerts/           -> list alerts
     - GET /api/alerts/alerts/{id}/      -> retrieve one alert
     - PATCH /api/alerts/alerts/{id}/    -> update fields like status
 
@@ -30,11 +29,11 @@ class AlertViewSet(
     def get_queryset(self):
         qs = Alert.objects.select_related("rule", "machine").all()
 
-        # Simple filters via query parameters
         severity = self.request.query_params.get("severity")
         status_param = self.request.query_params.get("status")
         machine_id = self.request.query_params.get("machine")
         rule_id = self.request.query_params.get("rule")
+        source_ip = self.request.query_params.get("source_ip")
 
         if severity:
             qs = qs.filter(severity=severity)
@@ -44,6 +43,8 @@ class AlertViewSet(
             qs = qs.filter(machine_id=machine_id)
         if rule_id:
             qs = qs.filter(rule_id=rule_id)
+        if source_ip:
+            qs = qs.filter(source_ip=source_ip)
 
         return qs
 

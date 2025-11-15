@@ -8,8 +8,8 @@ class Alert(models.Model):
     A security alert raised by the rule engine.
 
     Alerts are deduplicated: multiple events that match the same rule + machine
-    will increment `occurrences` and update `last_seen` instead of creating
-    infinite rows.
+    will increment `occurrences` (and `occurrence_count`) and update `last_seen`
+    instead of creating infinite rows.
     """
 
     SEVERITY_LOW = "low"
@@ -60,7 +60,21 @@ class Alert(models.Model):
         default=STATUS_OPEN,
     )
 
+    # New: explicit source IP field (tests filter on this)
+    source_ip = models.CharField(
+        max_length=64,
+        blank=True,
+        null=True,
+        help_text="Source IP address that triggered this alert (if applicable).",
+    )
+
+    # Internal + exposed counter.
+    # Tests expect `occurrence_count` to be >= threshold.
     occurrences = models.PositiveIntegerField(default=1)
+    occurrence_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Mirror of occurrences, kept for backward compatibility and tests.",
+    )
 
     first_seen = models.DateTimeField(default=timezone.now)
     last_seen = models.DateTimeField(default=timezone.now)
@@ -75,7 +89,7 @@ class Alert(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["-last_seen", "-severity", "-occurrences"]
+        ordering = ["-last_seen", "-severity", "-occurrence_count", "-occurrences"]
 
     def __str__(self) -> str:
         return f"[{self.severity.upper()}] {self.title} ({self.machine})"
@@ -91,9 +105,18 @@ class Alert(models.Model):
 
     def bump_occurrence(self) -> None:
         """
-        Increment the occurrences counter and update last_seen.
+        Increment the occurrences counter and keep occurrence_count in sync.
         """
-        self.occurrences = models.F("occurrences") + 1
-        # We use F() for atomic increment; refresh_instance_after_update in engine.
+        current = self.occurrences or 0
+        current += 1
+        self.occurrences = current
+        self.occurrence_count = current
         self.last_seen = timezone.now()
-        self.save(update_fields=["occurrences", "last_seen", "updated_at"])
+        self.save(
+            update_fields=[
+                "occurrences",
+                "occurrence_count",
+                "last_seen",
+                "updated_at",
+            ]
+        )

@@ -6,7 +6,6 @@ import requests
 from django.conf import settings
 from django.core.mail import send_mail
 from django.db import transaction
-from django.db.models import F
 from django.utils import timezone
 
 from .models import Alert
@@ -68,6 +67,9 @@ def _format_alert_message(alert: Alert) -> str:
         f"First seen: {alert.first_seen.isoformat()}",
         f"Last seen: {alert.last_seen.isoformat()}",
     ]
+
+    if alert.source_ip:
+        lines.append(f"Source IP: {alert.source_ip}")
 
     if alert.description:
         lines.append("")
@@ -164,44 +166,132 @@ def _send_notifications(alert: Alert) -> None:
     _notify_via_telegram(alert)
 
 
+def _extract_metadata_from_log_entry(log_entry: Any) -> Dict[str, Any]:
+    """
+    Build a metadata dict from a LogEntry instance.
+
+    We are defensive here because we don't want tight coupling to the LogEntry model
+    structure. We just grab common attributes if they exist.
+    """
+    meta: Dict[str, Any] = {}
+
+    # Common top-level attributes we care about
+    for attr in [
+        "event_type",
+        "source_ip",
+        "username",
+        "raw_message",
+        "process",
+        "pid",
+    ]:
+        value = getattr(log_entry, attr, None)
+        if value is not None:
+            meta[attr] = value
+
+    # If the log entry has a JSON or dict-like metadata/extra field, merge it
+    for attr in ["metadata", "extra", "payload"]:
+        extra = getattr(log_entry, attr, None)
+        if isinstance(extra, dict):
+            # Log metadata wins; do not overwrite existing keys
+            for k, v in extra.items():
+                meta.setdefault(k, v)
+
+    return meta
+
+
 @transaction.atomic
 def create_or_update_alert(
     *,
     rule: Rule,
-    machine: Machine,
+    machine: Optional[Machine] = None,
+    log_entry: Optional[Any] = None,
     severity: Optional[str] = None,
     title: Optional[str] = None,
     description: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
+    occurrences: Optional[int] = None,
 ) -> Alert:
     """
     Main entry point used by the rule engine whenever a rule fires.
 
+    The rules.engine currently calls:
+
+        create_or_update_alert(rule=rule, log_entry=log_entry, occurrences=count)
+
     Behaviour:
-    - Find an existing OPEN alert for the same (rule, machine).
-    - If found: increment occurrences, update last_seen, merge metadata.
-    - Else: create a new alert row.
+    - If log_entry is provided, we extract:
+        * machine from log_entry.machine
+        * source_ip from log_entry.source_ip (if present)
+        * metadata from log_entry (source_ip, username, raw_message, ...)
+      unless these are explicitly passed.
+    - Find an existing OPEN alert for the same (rule, machine, source_ip).
+    - If found: update occurrences (to `occurrences` if given, otherwise +1),
+      update last_seen, merge metadata, possibly bump severity.
+    - Else: create a new alert row, with occurrences = `occurrences` or 1.
+    - Keep `occurrence_count` in sync with `occurrences`.
     - If escalation conditions are met, mark as escalated and send notifications.
-    - On creation (first time), also send notifications.
+    - On first creation, also send notifications.
 
     Returns the Alert instance (fresh from DB).
     """
+
+    # Derive machine, metadata and source_ip from log_entry if needed
+    if log_entry is not None:
+        if machine is None:
+            machine = getattr(log_entry, "machine", None)
+
+        if metadata is None:
+            metadata = _extract_metadata_from_log_entry(log_entry)
+
+        if description is None:
+            raw_msg = getattr(log_entry, "raw_message", None)
+            if raw_msg:
+                description = raw_msg
+
+    if machine is None:
+        raise ValueError(
+            "create_or_update_alert requires a machine or a log_entry with machine"
+        )
+
     metadata = metadata or {}
 
-    # Try to find an existing open alert for this rule+machine
+    # Determine source_ip (explicit field on Alert)
+    source_ip = getattr(log_entry, "source_ip", None) if log_entry is not None else None
+    if source_ip is None:
+        source_ip = metadata.get("source_ip")
+
+    effective_severity = severity or getattr(rule, "severity", Alert.SEVERITY_LOW)
+
+    # Try to find an existing open alert for this rule+machine+source_ip
+    filter_kwargs = {
+        "rule": rule,
+        "machine": machine,
+        "status": Alert.STATUS_OPEN,
+    }
+    if source_ip:
+        filter_kwargs["source_ip"] = source_ip
+
     existing = (
         Alert.objects.select_for_update()
-        .filter(rule=rule, machine=machine, status=Alert.STATUS_OPEN)
+        .filter(**filter_kwargs)
         .order_by("-last_seen")
         .first()
     )
 
-    effective_severity = severity or getattr(rule, "severity", Alert.SEVERITY_LOW)
-
     if existing:
         # Update existing alert (deduplication)
-        existing.occurrences = F("occurrences") + 1
+        if occurrences is not None:
+            current = occurrences
+        else:
+            current = (existing.occurrences or 0) + 1
+
+        existing.occurrences = current
+        existing.occurrence_count = current
         existing.last_seen = timezone.now()
+
+        # Ensure source_ip is set if we have it now
+        if source_ip and not existing.source_ip:
+            existing.source_ip = source_ip
 
         # Merge metadata (existing values win, only add new keys)
         if existing.metadata is None:
@@ -209,7 +299,6 @@ def create_or_update_alert(
         else:
             merged = dict(existing.metadata)
             for k, v in metadata.items():
-                # If key already exists, we do not overwrite; we keep first value
                 merged.setdefault(k, v)
             existing.metadata = merged
 
@@ -227,10 +316,6 @@ def create_or_update_alert(
 
         existing.save()
 
-        # We need a fresh instance with the concrete occurrences value,
-        # because we used F() for atomic increment.
-        existing.refresh_from_db()
-
         if _should_escalate(existing):
             existing.is_escalated = True
             existing.save(update_fields=["is_escalated", "updated_at"])
@@ -239,8 +324,14 @@ def create_or_update_alert(
         return existing
 
     # No open alert => create a brand new one
-    title = title or f"Rule '{rule.name}' triggered on {machine.hostname}"
-    description = description or (getattr(rule, "description", "") or "")
+    if title is None:
+        hostname = getattr(machine, "hostname", str(machine))
+        title = f"Rule '{rule.name}' triggered on {hostname}"
+
+    if description is None:
+        description = getattr(rule, "description", "") or ""
+
+    current = occurrences if occurrences is not None else 1
 
     alert = Alert.objects.create(
         rule=rule,
@@ -249,7 +340,9 @@ def create_or_update_alert(
         description=description,
         severity=effective_severity,
         status=Alert.STATUS_OPEN,
-        occurrences=1,
+        source_ip=source_ip,
+        occurrences=current,
+        occurrence_count=current,
         first_seen=timezone.now(),
         last_seen=timezone.now(),
         is_escalated=False,

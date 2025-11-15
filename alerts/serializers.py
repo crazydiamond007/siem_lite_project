@@ -1,4 +1,3 @@
-# alerts/serializers.py
 from rest_framework import serializers
 
 from .models import Alert
@@ -20,7 +19,9 @@ class AlertSerializer(serializers.ModelSerializer):
             "description",
             "severity",
             "status",
+            "source_ip",
             "occurrences",
+            "occurrence_count",
             "first_seen",
             "last_seen",
             "is_escalated",
@@ -36,6 +37,7 @@ class AlertSerializer(serializers.ModelSerializer):
             "first_seen",
             "last_seen",
             "occurrences",
+            "occurrence_count",
             "is_escalated",
             "created_at",
             "updated_at",
