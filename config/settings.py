@@ -33,7 +33,9 @@ DEBUG = os.getenv("DJANGO_DEBUG", "True") == "True"
 
 ALLOWED_HOSTS = [
     host.strip()
-    for host in os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
+    for host in os.getenv(
+        "ALLOWED_HOSTS", "127.0.0.1,localhost,192.168.0.101,0.0.0.0"
+    ).split(",")
     if host.strip()
 ]
 
